@@ -24,10 +24,18 @@ REPO="suryakulshreshtha/Forkable-Stack-Dojo-Typescript"
 
 # Profile bio. GitHub truncates long bios (around 160 characters), so the
 # script refuses to write one longer than that rather than silently cutting it.
-BIO="SDET & Test Automation Architect. I publish Forkable* repos that teach by running, not reading. #SDET #TestAutomation #Playwright #TypeScript #DevOps"
+#
+# This keeps your existing two lines and flag, and adds hashtags. Your current
+# bio also carries "PO-QA SDET | Python - Playwright - Test Automation - CI/CD |
+# QA Architecture", which does not fit alongside hashtags inside 160 characters.
+#
+# 👉 Set BIO="" to leave your profile bio completely untouched.
+BIO="🇮🇳 Reversing QA Entropy Locally.
+Turning QA into Quality Awesomeness.
+#SDET #TestAutomation #Playwright #TypeScript #DevOps"
 
 # This repo's About box.
-DESCRIPTION="Learn a modern TypeScript stack one tool at a time: 22 self-contained dojos with a lesson, a drill you build, and a gate you must clear. Next.js, React, Express, Prisma, Playwright, Docker, Azure. Commands for macOS and Windows."
+DESCRIPTION="Learn a modern TypeScript stack one tool at a time: 23 self-contained dojos, each with a lesson, a drill you build, and a gate you must clear. TypeScript, Next.js, React, Express, Prisma, Playwright, Docker, Azure. Commands for macOS and Windows."
 
 # This repo's website link.
 HOMEPAGE="https://suryakulshreshtha.github.io"
@@ -72,11 +80,14 @@ fi
 ok "gh authenticated"
 
 BIO_LEN=${#BIO}
-if [ "$BIO_LEN" -gt 160 ]; then
+if [ -z "$BIO" ]; then
+  warn "BIO is empty — your profile bio will be left untouched."
+elif [ "$BIO_LEN" -gt 160 ]; then
   err "BIO is $BIO_LEN characters. GitHub truncates around 160 — shorten it and re-run."
   exit 1
+else
+  ok "BIO length $BIO_LEN / 160"
 fi
-ok "BIO length $BIO_LEN / 160"
 
 TOPIC_COUNT=$(printf '%s' "$TOPICS" | tr ',' '\n' | grep -c .)
 if [ "$TOPIC_COUNT" -gt 20 ]; then
@@ -138,16 +149,36 @@ if [ "$ASSUME_YES" != true ]; then
 fi
 
 echo
-gh api -X PATCH /user -f bio="$BIO" >/dev/null
-ok "profile bio updated"
+FAILED=0
 
-gh repo edit "$REPO" --description "$DESCRIPTION" >/dev/null
-ok "repo About updated"
+# Each step reports its own outcome. One failure must not abort the rest:
+# updating your bio needs a token scope that repo edits do not.
+if [ -n "$BIO" ]; then
+  if gh api -X PATCH /user -f bio="$BIO" >/dev/null 2>&1; then
+    ok "profile bio updated"
+  else
+    FAILED=1
+    warn "profile bio NOT updated — your gh token is missing the \"user\" scope."
+    echo "     Grant it once, then re-run this script:"
+    echo "       gh auth refresh -h github.com -s user"
+  fi
+else
+  warn "profile bio skipped (BIO is empty)"
+fi
 
-gh repo edit "$REPO" --homepage "$HOMEPAGE" >/dev/null
-ok "repo website updated"
+if gh repo edit "$REPO" --description "$DESCRIPTION" >/dev/null 2>&1; then
+  ok "repo About updated"
+else
+  FAILED=1; warn "repo About NOT updated"
+fi
 
-# --add-topic replaces nothing, so clear the old set first for an exact match.
+if gh repo edit "$REPO" --homepage "$HOMEPAGE" >/dev/null 2>&1; then
+  ok "repo website updated"
+else
+  FAILED=1; warn "repo website NOT updated"
+fi
+
+# --add-topic adds, it does not replace, so clear the old set first.
 if [ -n "$CURRENT_TOPICS" ]; then
   OLD_IFS=$IFS; IFS=','
   for t in $CURRENT_TOPICS; do
@@ -155,8 +186,17 @@ if [ -n "$CURRENT_TOPICS" ]; then
   done
   IFS=$OLD_IFS
 fi
-gh repo edit "$REPO" --add-topic "$TOPICS" >/dev/null
-ok "repo topics set"
+if gh repo edit "$REPO" --add-topic "$TOPICS" >/dev/null 2>&1; then
+  ok "repo topics set"
+else
+  FAILED=1; warn "repo topics NOT set"
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+  echo
+  warn "Some steps did not apply. Fix the cause above and re-run with --apply —"
+  warn "the script is safe to run repeatedly; it only rewrites the same values."
+fi
 
 echo
 bold "Done. Verify:"
